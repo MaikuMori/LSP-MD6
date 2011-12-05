@@ -9,7 +9,7 @@
 #include "algorithms.h"
 #include "main.h"
 
-#define ALG_COUNT 2
+#define ALG_COUNT 4
 #define MEASURE_COUNT 10000
 
 MemoryBlock * mb_head = NULL;
@@ -85,6 +85,8 @@ int main(int argc, char * argv[]) {
     //Fill the function lookup table.
     alg_functions[0] = alg_first_fit;
     alg_functions[1] = alg_next_fit;
+    alg_functions[2] = alg_best_fit;
+    alg_functions[3] = alg_worst_fit;
 
     //Validate and parse input.
     if(argc == 5) {
