@@ -8,8 +8,8 @@
 #include "algorithms.h"
 #include "main.h"
 
-#define ALG_COUNT 4
-#define MEASURE_COUNT 10000
+#define ALG_COUNT 0
+#define MEASURE_COUNT 0
 
 MemoryBlock * mb_head = NULL;
 
@@ -33,6 +33,7 @@ int allocate_memory(FILE *data) {
         mb_cur->free = 1;
         mb_cur->size = size;
         mb_cur->used = 0;
+        mb_cur->prev = NULL;
         mb_cur->next = NULL;
 
         if(mb_head) {
@@ -41,7 +42,7 @@ int allocate_memory(FILE *data) {
         } else {
             mb_head = mb_cur;
         }
-
+        printf("%p %p\n", mb_head, mb_cur);
         chunks++;
     }
 
@@ -51,9 +52,33 @@ int allocate_memory(FILE *data) {
 void reset_memory(void) {
     MemoryBlock * mb_cur = NULL;
 
-    for(mb_cur = mb_head; mb_head->next != NULL; mb_head = mb_head->next) {
+    for(mb_cur = mb_head; mb_cur->next != NULL; mb_cur = mb_head->next) {
         mb_cur->free = 1;
         mb_cur->used = 0;
+    }
+}
+
+//Get fragmention information from memory.
+float get_fragmentation(void) {
+    MemoryBlock * mb_cur;
+    float total = 0, largest = 0, free = 0;
+
+    for(mb_cur = mb_head; mb_cur != NULL; mb_cur = mb_cur->next) {
+        free = (float) mb_cur->free;
+        total += free;
+
+        if (free > largest ){
+            largest = free;
+        }
+    }
+    printf("%f %f %f\n",total, largest, free);
+    return (1.0 - (largest / total));
+}
+
+void print_memory(void) {
+    MemoryBlock * mb_cur = NULL;
+    for(mb_cur = mb_head; mb_cur != NULL; mb_cur = mb_cur->next){
+        printf("Memory buffer size - %i, used - %i\n", mb_cur->size, mb_cur->used);
     }
 }
 
@@ -72,6 +97,8 @@ int main(int argc, char * argv[]) {
     struct timespec end_time_rt, end_time_proc;
     //Avg time.
     unsigned long int sum_rt, sum_proc;
+    //Fragmentation info.
+    float frag;
     //File pointers.
     FILE * chunks_file;
     FILE * size_file;
@@ -131,6 +158,8 @@ int main(int argc, char * argv[]) {
     if(!do_tests) {
         //Simulate free memory according to chunks file.
         r = allocate_memory(chunks_file);
+        print_memory();
+
         if(!r) {
              printf("Error: Failed to parse chunks file"
                     " probably currupt file.\n");
@@ -139,43 +168,43 @@ int main(int argc, char * argv[]) {
 
         //For each algorithm test it's runing time.
         for(i = 0; i < ALG_COUNT; i++) {
+            sum_rt = sum_proc = 0;
             printf("Running algorithm %d.\n", i + 1);
             for(j = 0; j < MEASURE_COUNT; j++) {
+                //Reset the memory to unused.
+                reset_memory();
+                rewind(size_file);
+
                 //Get 'realtime' clock, sadly also measures the next function,
                 //but that shouldn't matter here as for real measurements
                 //we're using CPU time.
                 clock_gettime(CLOCK_MONOTONIC, &start_time_rt);
                 clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time_proc);
 
-                //
+                //Call the algorithm.
                 r = alg_functions[i](mb_head, size_file);
 
                 //Get timer readings.
                 clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time_proc);
                 clock_gettime(CLOCK_MONOTONIC, &end_time_rt);
-
-                //Reset the memory to unused.
-                reset_memory();
             }
 
             sum_rt += (long) (end_time_rt.tv_nsec - start_time_rt.tv_nsec);
             sum_proc += (long) (end_time_proc.tv_nsec -
                                     start_time_proc.tv_nsec);
 
+            frag = get_fragmentation();
+
             //Check response from algorithm.
-            switch(r) {
-                case 0:
-                    printf("Algorithm couldn't read input file.\n");
-                    break;
-                case -1:
-                    printf("Algorithm reported out of memory error.\n");
-                    break;
-            }
+            if(r < 0)
+                printf("Algorithm failed to open size file.");
 
             //Print the benchmark.
-            printf("Realtime: %f, CPU: %f\n\n",
-                    sum_rt * 1.0f / MEASURE_COUNT,
-                    sum_rt * 1.0f / MEASURE_COUNT);
+            printf("Realtime: %lf, CPU: %lf, fragmentation: %f, "
+                   "unallocated: %d\n\n",
+                   (double) sum_rt / MEASURE_COUNT,
+                   (double) sum_proc  / MEASURE_COUNT,
+                   frag, r);
         }
 
         //Close the files.

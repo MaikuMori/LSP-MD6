@@ -7,13 +7,13 @@
 int alg_first_fit(MemoryBlock * memorylist_head, FILE * data) {
     MemoryBlock * mb_cur;
     char line[INPUT_BUFF_SIZE];
-    int size;
+    int size, unallocated = 0;
 
     while(fgets(line, INPUT_BUFF_SIZE, data) != NULL) {
         size = atoi(line);
         //Either input was < 1 or it failed to convert to int, both are wrong.
         if (size < 1) {
-            return 0;
+            return -1;
         }
 
         for(mb_cur = memorylist_head; mb_cur != NULL; mb_cur = mb_cur->next) {
@@ -21,59 +21,53 @@ int alg_first_fit(MemoryBlock * memorylist_head, FILE * data) {
                 mb_cur->free = 0;
                 mb_cur->used = size;
                 break;
-            } else if(mb_cur->next == NULL) {
-                //Not enough memory.
-                return -1;
             }
         }
 
+        //Failed to find memory.
+        if (mb_cur == NULL) {
+            unallocated += size;
+            continue;
+        }
     }
 
-    return 1;
+    return unallocated;
 }
 
 int alg_next_fit(MemoryBlock * memorylist_head, FILE * data) {
-    MemoryBlock * mb_cur, * mb_temp;
+    MemoryBlock * mb_cur, * mb_temp = NULL;
     char line[INPUT_BUFF_SIZE];
-    int size;
+    int size, unallocated = 0;
 
     while(fgets(line, INPUT_BUFF_SIZE, data) != NULL) {
         size = atoi(line);
         //Either input was < 1 or it failed to convert to int, both are wrong.
         if (size < 1) {
-            return 0;
+            return -1;
         }
 
         for(mb_cur = memorylist_head; mb_cur != NULL; mb_cur = mb_cur->next) {
             if((mb_cur->size >= size) && (mb_cur->free == 1)) {
-                for(mb_temp = mb_cur->next; mb_temp != NULL;
-                                                    mb_temp = mb_temp->next) {
-
-                    if((mb_temp->size >= size) && (mb_temp->free == 1)) {
-                        mb_temp->free = 0;
-                        mb_temp->used = size;
-                        break;
-                    } else if(mb_temp->next == NULL) {
-                        //Not enough memory.
-                        return -1;
-                    }
+                if (mb_temp != NULL) {
+                    mb_cur->free = 0;
+                    mb_cur->used = size;
+                    break;
+                } else {
+                    //We found the first one.
+                    mb_temp = mb_cur;
                 }
-                break;
-            } else if(mb_cur->next == NULL) {
-                //Not enough memory.
-                return -1;
             }
         }
+
+        //Failed to find memory.
+        if (mb_cur == NULL) {
+            unallocated += size;
+            continue;
+        }
     }
-    return 1;
+    return unallocated;
 }
 
-/**
- * Best fit
- * @param memorylist_head
- * @param data
- * @return 
- */
 int alg_best_fit(MemoryBlock * memorylist_head, FILE * data) {
     MemoryBlock * mb_cur, * best_block_known_for_now;
     char line[INPUT_BUFF_SIZE];
@@ -86,27 +80,27 @@ int alg_best_fit(MemoryBlock * memorylist_head, FILE * data) {
         if (size < 1) {
             return 0;
         }
-        
+
         // Reset smallest known block
         smallest_known_size = -1;
         best_block_known_for_now = NULL;
 
         for(mb_cur = memorylist_head; mb_cur != NULL; mb_cur = mb_cur->next) {
-            
+
             // Perfect fit
             if(mb_cur->free == size) {
                 best_block_known_for_now = mb_cur;
                 break;
             }
             // first good known fit or a better fit
-            else if((mb_cur->free > size && smallest_known_size == -1) || 
+            else if((mb_cur->free > size && smallest_known_size == -1) ||
                 (mb_cur->free > size && mb_cur->free < smallest_known_size)) {
-                
+
                 best_block_known_for_now = mb_cur;
                 smallest_known_size = mb_cur->free;
             }
         }
-        
+
         // allocate memory here
         // Memory is full
         if(best_block_known_for_now == NULL) {
@@ -120,12 +114,6 @@ int alg_best_fit(MemoryBlock * memorylist_head, FILE * data) {
     return 1;
 }
 
-/**
- * Worst fit
- * @param memorylist_head
- * @param data
- * @return 
- */
 int alg_worst_fit(MemoryBlock * memorylist_head, FILE * data) {
     MemoryBlock * mb_cur, * best_block_known_for_now;
     char line[INPUT_BUFF_SIZE];
@@ -138,20 +126,20 @@ int alg_worst_fit(MemoryBlock * memorylist_head, FILE * data) {
         if (size < 1) {
             return 0;
         }
-        
-        // Reset smallest known block
+
+        //Reset smallest known block.
         largest_known_size = 0;
         best_block_known_for_now = NULL;
 
         for(mb_cur = memorylist_head; mb_cur != NULL; mb_cur = mb_cur->next) {
-            
+
             if((mb_cur->free > size && largest_known_size < mb_cur->free)) {
-                
+
                 best_block_known_for_now = mb_cur;
                 largest_known_size = mb_cur->free;
             }
         }
-        
+
         // allocate memory here
         // Memory is full
         if(best_block_known_for_now == NULL) {
