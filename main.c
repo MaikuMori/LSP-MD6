@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <time.h>
 
-//#include "bmp.h"
 #include "algorithms.h"
 #include "main.h"
 
