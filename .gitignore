@@ -1,0 +1,22 @@
+#Executables
+*/bin/Debug
+*/bin/Release
+
+ValgrindOut.xml
+
+#CBS random files
+*.layout
+*.depend
+
+#All backup files
+*.*~
+#Valgrind output files
+*.out
+*.out.*
+#Object files
+*.o
+
+#Geany files
+*.gch
+
+
