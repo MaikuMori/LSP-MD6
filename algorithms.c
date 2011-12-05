@@ -9,7 +9,7 @@ int alg_first_fit(MemoryBlock * memorylist_head, FILE * data) {
     char line[INPUT_BUFF_SIZE];
     int size;
 
-    while(fgets(line, sizeof line, data) != NULL) {
+    while(fgets(line, INPUT_BUFF_SIZE, data) != NULL) {
         size = atoi(line);
         //Either input was < 1 or it failed to convert to int, both are wrong.
         if (size < 1) {
@@ -37,9 +37,8 @@ int alg_next_fit(MemoryBlock * memorylist_head, FILE * data) {
     char line[INPUT_BUFF_SIZE];
     int size;
 
-    while(fgets(line, sizeof line, data) != NULL) {
+    while(fgets(line, INPUT_BUFF_SIZE, data) != NULL) {
         size = atoi(line);
-
         //Either input was < 1 or it failed to convert to int, both are wrong.
         if (size < 1) {
             return 0;

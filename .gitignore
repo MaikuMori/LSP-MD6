@@ -19,6 +19,7 @@ ValgrindOut.xml
 #Geany files
 *.gch
 
-
+#Output file.
+md6
 nbproject
 md6.exe
