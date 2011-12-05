@@ -20,3 +20,5 @@ ValgrindOut.xml
 *.gch
 
 
+nbproject
+md6.exe
