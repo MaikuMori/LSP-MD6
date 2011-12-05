@@ -10,6 +10,7 @@
 #include "main.h"
 
 #define ALG_COUNT 2
+#define MEASURE_COUNT 10000
 
 MemoryBlock * mb_head = NULL;
 
@@ -48,6 +49,15 @@ int allocate_memory(FILE *data) {
     return (chunks > 0) ? 1 : 0;
 }
 
+void reset_memory(void) {
+    MemoryBlock * mb_cur = NULL;
+
+    for(mb_cur = mb_head; mb_head->next != NULL; mb_head = mb_head->next) {
+        mb_cur->free = 1;
+        mb_cur->used = 0;
+    }
+}
+
 void help(void) {
     printf("Usage: md6\n");
     printf(" -c <filename>:\n");
@@ -61,13 +71,15 @@ int main(int argc, char * argv[]) {
     //Timers.
     struct timespec start_time_rt, start_time_proc;
     struct timespec end_time_rt, end_time_proc;
-    //File pointers
+    //Avg time.
+    unsigned long int sum_rt, sum_proc;
+    //File pointers.
     FILE * chunks_file;
     FILE * size_file;
     //Function lookup table.
     int (* alg_functions[ALG_COUNT])(MemoryBlock * , FILE * );
 
-    int i, r;
+    int i, j, r;
     unsigned char do_tests = 0;
 
     //Fill the function lookup table.
@@ -127,17 +139,27 @@ int main(int argc, char * argv[]) {
         //For each algorithm test it's runing time.
         for(i = 0; i < ALG_COUNT; i++) {
             printf("Running algorithm %d.\n", i + 1);
-            //Get 'realtime' clock, sadly also measures the next function,
-            //but that shouldn't matter here as for real measurements
-            //we're using CPU time.
-            clock_gettime(CLOCK_MONOTONIC, &start_time_rt);
-            clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time_proc);
+            for(j = 0; j < MEASURE_COUNT; j++) {
+                //Get 'realtime' clock, sadly also measures the next function,
+                //but that shouldn't matter here as for real measurements
+                //we're using CPU time.
+                clock_gettime(CLOCK_MONOTONIC, &start_time_rt);
+                clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time_proc);
 
-            r = alg_functions[i](mb_head, size_file);
+                //
+                r = alg_functions[i](mb_head, size_file);
 
-            //Get timer readings.
-            clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time_proc);
-            clock_gettime(CLOCK_MONOTONIC, &end_time_rt);
+                //Get timer readings.
+                clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time_proc);
+                clock_gettime(CLOCK_MONOTONIC, &end_time_rt);
+
+                //Reset the memory to unused.
+                reset_memory();
+            }
+
+            sum_rt += (long) (end_time_rt.tv_nsec - start_time_rt.tv_nsec);
+            sum_proc += (long) (end_time_proc.tv_nsec -
+                                    start_time_proc.tv_nsec);
 
             //Check response from algorithm.
             switch(r) {
@@ -150,12 +172,9 @@ int main(int argc, char * argv[]) {
             }
 
             //Print the benchmark.
-            printf("Realtime: %ld %ld, CPU: %ld %ld\n\n",
-                (long) (end_time_rt.tv_sec - start_time_rt.tv_sec),
-                (long) (end_time_rt.tv_nsec - start_time_rt.tv_nsec),
-                (long) (end_time_proc.tv_sec - start_time_proc.tv_sec),
-                (long) (end_time_proc.tv_nsec - start_time_proc.tv_nsec)
-            );
+            printf("Realtime: %f, CPU: %f\n\n",
+                    sum_rt * 1.0f / MEASURE_COUNT,
+                    sum_rt * 1.0f / MEASURE_COUNT);
         }
 
         //Close the files.
