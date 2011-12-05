@@ -1,2 +1,9 @@
-all: LSP_MD6_rihards-balass.c
-	gcc -Wall LSP_MD6_rihards-balass.c -o md6 -ggdb
+CC = gcc
+CFLAGS = -Wall
+OBJECTS = main.o algorithms.o
+
+all: $(OBJECTS)
+	$(CC) $(CFLAGS) $(OBJECTS) -o md6
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $<
