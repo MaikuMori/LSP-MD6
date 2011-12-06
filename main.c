@@ -3,19 +3,23 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #include "algorithms.h"
 #include "main.h"
 
-#define ALG_COUNT 0
-#define MEASURE_COUNT 0
+//How many allocation algorithms we have.
+#define ALG_COUNT 4
+//How many times to measure each algorithm.
+#define MEASURE_COUNT 100000
 
+//Head of memory block linked list.
 MemoryBlock * mb_head = NULL;
 
 //Allocate (simulate) free memory according to chunks file.
-int allocate_memory(FILE *data) {
-    MemoryBlock * mb_cur = NULL;
+int memory_allocate(FILE *data) {
+    MemoryBlock * mb_temp, * mb_cur = NULL;
     char line[INPUT_BUFF_SIZE];
     int size;
     int chunks = 0;
@@ -29,57 +33,64 @@ int allocate_memory(FILE *data) {
         }
 
         //Allocate a new memory block.
-        mb_cur = (MemoryBlock *) malloc(sizeof(MemoryBlock));
-        mb_cur->free = 1;
-        mb_cur->size = size;
-        mb_cur->used = 0;
-        mb_cur->prev = NULL;
-        mb_cur->next = NULL;
+        mb_temp = (MemoryBlock *) malloc(sizeof(MemoryBlock));
+        mb_temp->total_memory = size;
+        mb_temp->free_memory = size;
+        mb_temp->next = NULL;
 
-        if(mb_head) {
-            mb_cur->prev = mb_head;
-            mb_head->next = mb_cur;
-        } else {
+        if(mb_cur) {
+            mb_cur->next = mb_temp;
+        }
+
+        mb_cur = mb_temp;
+
+        if(!mb_head) {
             mb_head = mb_cur;
         }
-        printf("%p %p\n", mb_head, mb_cur);
+
         chunks++;
     }
 
     return (chunks > 0) ? 1 : 0;
 }
 
-void reset_memory(void) {
+//Resets all memory chunks back to 'free'.
+void memory_reset(void) {
     MemoryBlock * mb_cur = NULL;
 
-    for(mb_cur = mb_head; mb_cur->next != NULL; mb_cur = mb_head->next) {
-        mb_cur->free = 1;
-        mb_cur->used = 0;
+    for(mb_cur = mb_head; mb_cur != NULL; mb_cur = mb_cur->next) {
+        mb_cur->free_memory = mb_cur->total_memory;
     }
 }
 
-//Get fragmention information from memory.
+//Get fragmentation information from memory.
 float get_fragmentation(void) {
     MemoryBlock * mb_cur;
     float total = 0, largest = 0, free = 0;
 
     for(mb_cur = mb_head; mb_cur != NULL; mb_cur = mb_cur->next) {
-        free = (float) mb_cur->free;
+        free = (float) mb_cur->free_memory;
         total += free;
 
-        if (free > largest ){
+        if(free > largest) {
             largest = free;
         }
     }
-    printf("%f %f %f\n",total, largest, free);
+
     return (1.0 - (largest / total));
 }
 
-void print_memory(void) {
-    MemoryBlock * mb_cur = NULL;
-    for(mb_cur = mb_head; mb_cur != NULL; mb_cur = mb_cur->next){
-        printf("Memory buffer size - %i, used - %i\n", mb_cur->size, mb_cur->used);
+//Calculate difference between two timespec structs.
+struct timespec time_diff(struct timespec start, struct timespec end) {
+    struct timespec temp;
+    if ((end.tv_nsec - start.tv_nsec) < 0) {
+        temp.tv_sec = end.tv_sec - start.tv_sec - 1;
+        temp.tv_nsec = 1000000000 + end.tv_nsec - start.tv_nsec;
+    } else {
+        temp.tv_sec = end.tv_sec - start.tv_sec;
+        temp.tv_nsec = end.tv_nsec - start.tv_nsec;
     }
+    return temp;
 }
 
 void help(void) {
@@ -92,17 +103,14 @@ void help(void) {
 }
 
 int main(int argc, char * argv[]) {
-    //Timers.
-    struct timespec start_time_rt, start_time_proc;
-    struct timespec end_time_rt, end_time_proc;
-    //Avg time.
-    unsigned long int sum_rt, sum_proc;
+    //Benchmark times.
+    struct timespec start_time_proc, end_time_proc, sum_proc;
     //Fragmentation info.
     float frag;
     //File pointers.
     FILE * chunks_file;
     FILE * size_file;
-    //Function lookup table.
+    //Algorithm function lookup table.
     int (* alg_functions[ALG_COUNT])(MemoryBlock * , FILE * );
 
     int i, j, r;
@@ -122,18 +130,16 @@ int main(int argc, char * argv[]) {
             switch(argv[i][1]) {
                 case 'c':
                     chunks_file = fopen(argv[i + 1], "r");
-
                     if(!chunks_file) {
-                        printf("Error: Couldn't open chunks file!\n");
+                        printf("Error: Could not open chunks file!\n");
                         return EXIT_FAILURE;
                     }
                     i += 2;
                     break;
                 case 's':
                     size_file = fopen(argv[i + 1], "r");
-
                     if(!size_file) {
-                        printf("Error: Couldn't open size file!\n");
+                        printf("Error: Could not open size file!\n");
                         return EXIT_FAILURE;
                     }
                     i += 2;
@@ -157,54 +163,55 @@ int main(int argc, char * argv[]) {
     //Just working with 2 input files.
     if(!do_tests) {
         //Simulate free memory according to chunks file.
-        r = allocate_memory(chunks_file);
-        print_memory();
+        r = memory_allocate(chunks_file);
 
         if(!r) {
              printf("Error: Failed to parse chunks file"
-                    " probably currupt file.\n");
+                    " probably corrupt file.\n");
              return EXIT_FAILURE;
         }
 
-        //For each algorithm test it's runing time.
+        //For each algorithm test it's running time.
         for(i = 0; i < ALG_COUNT; i++) {
-            sum_rt = sum_proc = 0;
+            memset(&sum_proc, 0, sizeof(struct timespec));
+
             printf("Running algorithm %d.\n", i + 1);
             for(j = 0; j < MEASURE_COUNT; j++) {
                 //Reset the memory to unused.
-                reset_memory();
+                memory_reset();
                 rewind(size_file);
 
-                //Get 'realtime' clock, sadly also measures the next function,
-                //but that shouldn't matter here as for real measurements
-                //we're using CPU time.
-                clock_gettime(CLOCK_MONOTONIC, &start_time_rt);
+                //Get start time.
                 clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time_proc);
 
                 //Call the algorithm.
                 r = alg_functions[i](mb_head, size_file);
 
-                //Get timer readings.
+                //Get end time and calculate difference.
                 clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time_proc);
-                clock_gettime(CLOCK_MONOTONIC, &end_time_rt);
+                end_time_proc = time_diff(start_time_proc, end_time_proc);
+
+                //Sum with just in case overflow check, but there's almost no
+                //chance that it will reach number that high there fore secs
+                //are not used later.
+                sum_proc.tv_sec += end_time_proc.tv_sec;
+                sum_proc.tv_nsec += end_time_proc.tv_nsec;
+                if (sum_proc.tv_nsec > 1000000000) {
+                    sum_proc.tv_nsec -= 1000000000;
+                    sum_proc.tv_sec++;
+                }
             }
 
-            sum_rt += (long) (end_time_rt.tv_nsec - start_time_rt.tv_nsec);
-            sum_proc += (long) (end_time_proc.tv_nsec -
-                                    start_time_proc.tv_nsec);
-
+            //Get memory fragmentation.
             frag = get_fragmentation();
 
             //Check response from algorithm.
             if(r < 0)
-                printf("Algorithm failed to open size file.");
+                printf("Algorithm failed to open size file.\n");
 
             //Print the benchmark.
-            printf("Realtime: %lf, CPU: %lf, fragmentation: %f, "
-                   "unallocated: %d\n\n",
-                   (double) sum_rt / MEASURE_COUNT,
-                   (double) sum_proc  / MEASURE_COUNT,
-                   frag, r);
+            printf("CPU-time: %.2lfns, fragmentation: %2.2f%%, unallocated: %d\n\n",
+                   (double) sum_proc.tv_nsec  / MEASURE_COUNT, frag * 100, r);
         }
 
         //Close the files.
