@@ -4,17 +4,12 @@
 #include "main.h"
 #include "algorithms.h"
 
-int alg_first_fit(MemoryBlock * memorylist_head, FILE * data) {
+int alg_first_fit(MemoryBlock * memorylist_head, int * requests, int total) {
     MemoryBlock * mb_cur;
-    char line[INPUT_BUFF_SIZE];
-    int size, unallocated = 0;
+    int i, size, unallocated = 0;
 
-    while(fgets(line, INPUT_BUFF_SIZE, data) != NULL) {
-        size = atoi(line);
-        //Either input was < 1 or it failed to convert to int, both are wrong.
-        if(size < 1) {
-            return -1;
-        }
+    for(i = 0; i < total; i++) {
+        size = requests[i];
 
         for(mb_cur = memorylist_head; mb_cur != NULL; mb_cur = mb_cur->next) {
             if(mb_cur->free_memory >= size) {
@@ -32,19 +27,14 @@ int alg_first_fit(MemoryBlock * memorylist_head, FILE * data) {
     return unallocated;
 }
 
-int alg_next_fit(MemoryBlock * memorylist_head, FILE * data) {
+int alg_next_fit(MemoryBlock * memorylist_head, int * requests, int total) {
     MemoryBlock * mb_cur;
     MemoryBlock * mb_last_found = memorylist_head;
 
-    char line[INPUT_BUFF_SIZE];
-    int size, unallocated = 0;
+    int i, size, unallocated = 0;
 
-    while(fgets(line, INPUT_BUFF_SIZE, data) != NULL) {
-        size = atoi(line);
-        //Either input was < 1 or it failed to convert to int, both are wrong.
-        if (size < 1) {
-            return -1;
-        }
+    for(i = 0; i < total; i++) {
+        size = requests[i];
 
         for(mb_cur = mb_last_found; ; mb_cur = mb_cur->next) {
 
@@ -66,17 +56,12 @@ int alg_next_fit(MemoryBlock * memorylist_head, FILE * data) {
     return unallocated;
 }
 
-int alg_best_fit(MemoryBlock * memorylist_head, FILE * data) {
+int alg_best_fit(MemoryBlock * memorylist_head, int * requests, int total) {
     MemoryBlock * mb_cur, * best_block;
-    char line[INPUT_BUFF_SIZE];
-    int size, smallest_known_size, unallocated = 0;
+    int i, size, smallest_known_size, unallocated = 0;
 
-    while(fgets(line, INPUT_BUFF_SIZE, data) != NULL) {
-        size = atoi(line);
-        //Either input was < 1 or it failed to convert to int, both are wrong.
-        if (size < 1) {
-            return -1;
-        }
+    for(i = 0; i < total; i++) {
+        size = requests[i];
 
         //Reset smallest known block.
         smallest_known_size = -1;
@@ -105,17 +90,12 @@ int alg_best_fit(MemoryBlock * memorylist_head, FILE * data) {
     return unallocated;
 }
 
-int alg_worst_fit(MemoryBlock * memorylist_head, FILE * data) {
+int alg_worst_fit(MemoryBlock * memorylist_head, int * requests, int total) {
     MemoryBlock * mb_cur, * best_block;
-    char line[INPUT_BUFF_SIZE];
-    int size, largest_known_size, unallocated = 0;
+    int i, size, largest_known_size, unallocated = 0;
 
-    while(fgets(line, INPUT_BUFF_SIZE, data) != NULL) {
-        size = atoi(line);
-        //Either input was < 1 or it failed to convert to int, both are wrong.
-        if (size < 1) {
-            return -1;
-        }
+    for(i = 0; i < total; i++) {
+        size = requests[i];
 
         //Reset smallest known block.
         largest_known_size = 0;

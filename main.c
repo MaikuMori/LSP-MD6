@@ -12,10 +12,14 @@
 //How many allocation algorithms we have.
 #define ALG_COUNT 4
 //How many times to measure each algorithm.
-#define MEASURE_COUNT 100000
+#define MEASURE_COUNT 1000000
 
 //Head of memory block linked list.
 MemoryBlock * mb_head = NULL;
+//Sizes file content.
+int * requests;
+unsigned int requests_total = 0;
+unsigned int requests_size = 20;
 
 //Allocate (simulate) free memory according to chunks file.
 int memory_allocate(FILE *data) {
@@ -52,6 +56,31 @@ int memory_allocate(FILE *data) {
     }
 
     return (chunks > 0) ? 1 : 0;
+}
+
+//Read requests.
+int requests_read(FILE * sizes_file) {
+    char line[INPUT_BUFF_SIZE];
+    int size;
+
+    requests = (int *) malloc(sizeof(int) * requests_size);
+
+    while(fgets(line, INPUT_BUFF_SIZE, sizes_file) != NULL) {
+        size = atoi(line);
+        //Either input was < 1 or it failed to convert to int, both are wrong.
+        if(size < 1) {
+            return 0;
+        }
+
+        if (requests_total == requests_size) {
+            requests_size *= 2;
+            requests = (int *) realloc(requests, requests_size);
+        }
+
+        requests[requests_total] = size;
+    }
+
+    return 1;
 }
 
 //Resets all memory chunks back to 'free'.
@@ -111,7 +140,7 @@ int main(int argc, char * argv[]) {
     FILE * chunks_file;
     FILE * size_file;
     //Algorithm function lookup table.
-    int (* alg_functions[ALG_COUNT])(MemoryBlock * , FILE * );
+    int (* alg_functions[ALG_COUNT])(MemoryBlock * , int *, int);
 
     int i, j, r;
     unsigned char do_tests = 0;
@@ -171,6 +200,14 @@ int main(int argc, char * argv[]) {
              return EXIT_FAILURE;
         }
 
+        r = requests_read(size_file);
+
+        if(!r) {
+             printf("Error: Failed to parse size file"
+                    " probably corrupt file.\n");
+             return EXIT_FAILURE;
+        }
+
         //For each algorithm test it's running time.
         for(i = 0; i < ALG_COUNT; i++) {
             memset(&sum_proc, 0, sizeof(struct timespec));
@@ -179,13 +216,12 @@ int main(int argc, char * argv[]) {
             for(j = 0; j < MEASURE_COUNT; j++) {
                 //Reset the memory to unused.
                 memory_reset();
-                rewind(size_file);
 
                 //Get start time.
                 clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time_proc);
 
                 //Call the algorithm.
-                r = alg_functions[i](mb_head, size_file);
+                r = alg_functions[i](mb_head, requests, requests_total);
 
                 //Get end time and calculate difference.
                 clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time_proc);
@@ -217,6 +253,11 @@ int main(int argc, char * argv[]) {
         //Close the files.
         fclose(chunks_file);
         fclose(size_file);
+
+        //Free requests.
+        free(requests);
+        requests_total = 0;
+        requests_size = 20;
     } else {
         //Do all tests.
     }
