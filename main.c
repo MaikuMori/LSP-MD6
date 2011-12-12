@@ -7,12 +7,18 @@
 #include <time.h>
 
 #include "algorithms.h"
+#include "tests.h"
 #include "main.h"
 
 //How many allocation algorithms we have.
 #define ALG_COUNT 4
 //How many times to measure each algorithm.
-#define MEASURE_COUNT 1000000
+#define MEASURE_COUNT 10000000
+//Due to function being really fast we have to measure it multiple times and get
+//mean.
+#define MEASURE_COUNT_INNER 1
+//Path to tests
+#define TEST_PATH "./tests"
 
 //Head of memory block linked list.
 MemoryBlock * mb_head = NULL;
@@ -20,6 +26,8 @@ MemoryBlock * mb_head = NULL;
 int * requests;
 unsigned int requests_total = 0;
 unsigned int requests_size = 20;
+//Algorithm function lookup table.
+int (* alg_functions[ALG_COUNT])(MemoryBlock * , int *, int);
 
 //Allocate (simulate) free memory according to chunks file.
 int memory_allocate(FILE *data) {
@@ -122,6 +130,135 @@ struct timespec time_diff(struct timespec start, struct timespec end) {
     return temp;
 }
 
+//Do the measurements for each algorithm.
+void measure(FILE* chunks_file, FILE * requests_file)
+{
+    //Benchmark times.
+    struct timespec start_time_proc, end_time_proc, sum_proc;
+    //Fragmentation info.
+    float frag;
+    //Temp MemoryBlock.
+    MemoryBlock * mb_temp;
+
+    int i, j, k, r;
+    //Simulate free memory according to chunks file.
+    r = memory_allocate(chunks_file);
+
+    if(!r) {
+         printf("Error: Failed to parse chunks file"
+                " probably corrupt file.\n");
+         return;
+    }
+
+    r = requests_read(requests_file);
+
+    if(!r) {
+         printf("Error: Failed to parse size file"
+                " probably corrupt file.\n");
+         return;
+    }
+
+    //For each algorithm test it's running time.
+    for(i = 0; i < ALG_COUNT; i++) {
+        memset(&sum_proc, 0, sizeof(struct timespec));
+
+        printf("Running algorithm %d.\n", i + 1);
+        for(j = 0; j < MEASURE_COUNT; j++) {
+            //Reset the memory to unused.
+            memory_reset();
+
+            //Get start time.
+            clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time_proc);
+
+            //Call the algorithm.
+            for(k = 0; k < MEASURE_COUNT_INNER; k++)
+                r = alg_functions[i](mb_head, requests, requests_total);
+
+            //Get end time and calculate difference.
+            clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time_proc);
+            end_time_proc = time_diff(start_time_proc, end_time_proc);
+
+            //Sum with just in case overflow check, but there's almost no
+            //chance that it will reach number that high there fore secs
+            //are not used later.
+            sum_proc.tv_sec += end_time_proc.tv_sec;
+            sum_proc.tv_nsec += end_time_proc.tv_nsec;
+            if (sum_proc.tv_nsec > 1000000000) {
+                sum_proc.tv_nsec -= 1000000000;
+                sum_proc.tv_sec++;
+            }
+        }
+
+        //Get memory fragmentation.
+        frag = get_fragmentation();
+
+        //Check response from algorithm.
+        if(r < 0)
+            printf("Algorithm failed to open size file.\n");
+
+        //Print the benchmark.
+        printf("CPU-time: %.2lfs %.2lfns, fragmentation: %2.2f%%, unallocated: %d\n\n",
+               (double) sum_proc.tv_sec  / MEASURE_COUNT,
+               (double) sum_proc.tv_nsec  / MEASURE_COUNT, frag * 100, r);
+    }
+
+    //Free chunks.
+    while(mb_head) {
+        mb_temp = mb_head->next;
+        free(mb_head);
+        mb_head = mb_temp;
+    }
+
+    //Free requests.
+    free(requests);
+    requests_total = 0;
+    requests_size = 20;
+}
+
+//Runs measurements tests.
+void run_tests(TestNode * test)
+{
+    FILE * chunks_file;
+    FILE * requests_file;
+    while(test) {
+        //Skip if we don't have both files.
+        if((test->chunk_path == NULL) || (test->request_path == NULL)) {
+            printf("Skipping test '%s', doesn't have both input files.\n",
+                    test->name);
+            test = test->next;
+            continue;
+        }
+
+        chunks_file = fopen(test->chunk_path, "r");
+        requests_file = fopen(test->request_path, "r");
+
+        //Skip if we can't open either of the files.
+        if(!chunks_file) {
+            test = test->next;
+            printf("Skipping test '%s', can't open chunks file.\n",
+                    test->name);
+            continue;
+        }
+        if(!requests_file) {
+            test = test->next;
+            printf("Skipping test '%s', can't open requests file.\n",
+                    test->name);
+            continue;
+        }
+
+        printf("Doing measurements for test '%s' ...\n", test->name);
+        measure(chunks_file, requests_file);
+
+        //Close the files.
+        fclose(chunks_file);
+        fclose(requests_file);
+
+        test = test->next;
+        printf("\n");
+    }
+    printf("Done!\n");
+}
+
 void help(void) {
     printf("Usage: md6\n");
     printf(" -c <filename>:\n");
@@ -132,17 +269,13 @@ void help(void) {
 }
 
 int main(int argc, char * argv[]) {
-    //Benchmark times.
-    struct timespec start_time_proc, end_time_proc, sum_proc;
-    //Fragmentation info.
-    float frag;
     //File pointers.
     FILE * chunks_file;
-    FILE * size_file;
-    //Algorithm function lookup table.
-    int (* alg_functions[ALG_COUNT])(MemoryBlock * , int *, int);
+    FILE * requests_file;
+    //Head of test list.
+    TestNode * test_head;
 
-    int i, j, r;
+    int i;
     unsigned char do_tests = 0;
 
     //Fill the function lookup table.
@@ -166,9 +299,9 @@ int main(int argc, char * argv[]) {
                     i += 2;
                     break;
                 case 's':
-                    size_file = fopen(argv[i + 1], "r");
-                    if(!size_file) {
-                        printf("Error: Could not open size file!\n");
+                    requests_file = fopen(argv[i + 1], "r");
+                    if(!requests_file) {
+                        printf("Error: Could not open requests file!\n");
                         return EXIT_FAILURE;
                     }
                     i += 2;
@@ -191,75 +324,17 @@ int main(int argc, char * argv[]) {
 
     //Just working with 2 input files.
     if(!do_tests) {
-        //Simulate free memory according to chunks file.
-        r = memory_allocate(chunks_file);
-
-        if(!r) {
-             printf("Error: Failed to parse chunks file"
-                    " probably corrupt file.\n");
-             return EXIT_FAILURE;
-        }
-
-        r = requests_read(size_file);
-
-        if(!r) {
-             printf("Error: Failed to parse size file"
-                    " probably corrupt file.\n");
-             return EXIT_FAILURE;
-        }
-
-        //For each algorithm test it's running time.
-        for(i = 0; i < ALG_COUNT; i++) {
-            memset(&sum_proc, 0, sizeof(struct timespec));
-
-            printf("Running algorithm %d.\n", i + 1);
-            for(j = 0; j < MEASURE_COUNT; j++) {
-                //Reset the memory to unused.
-                memory_reset();
-
-                //Get start time.
-                clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time_proc);
-
-                //Call the algorithm.
-                r = alg_functions[i](mb_head, requests, requests_total);
-
-                //Get end time and calculate difference.
-                clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time_proc);
-                end_time_proc = time_diff(start_time_proc, end_time_proc);
-
-                //Sum with just in case overflow check, but there's almost no
-                //chance that it will reach number that high there fore secs
-                //are not used later.
-                sum_proc.tv_sec += end_time_proc.tv_sec;
-                sum_proc.tv_nsec += end_time_proc.tv_nsec;
-                if (sum_proc.tv_nsec > 1000000000) {
-                    sum_proc.tv_nsec -= 1000000000;
-                    sum_proc.tv_sec++;
-                }
-            }
-
-            //Get memory fragmentation.
-            frag = get_fragmentation();
-
-            //Check response from algorithm.
-            if(r < 0)
-                printf("Algorithm failed to open size file.\n");
-
-            //Print the benchmark.
-            printf("CPU-time: %.2lfns, fragmentation: %2.2f%%, unallocated: %d\n\n",
-                   (double) sum_proc.tv_nsec  / MEASURE_COUNT, frag * 100, r);
-        }
+        //Do the measurements for input files.
+        measure(chunks_file, requests_file);
 
         //Close the files.
         fclose(chunks_file);
-        fclose(size_file);
-
-        //Free requests.
-        free(requests);
-        requests_total = 0;
-        requests_size = 20;
+        fclose(requests_file);
     } else {
-        //Do all tests.
+        //Do all tests and then free them.
+        test_head = tests_get(TEST_PATH);
+        run_tests(test_head);
+        tests_free(test_head);
     }
 
     return EXIT_SUCCESS;
