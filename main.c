@@ -7,16 +7,14 @@
 #include <time.h>
 
 #include "algorithms.h"
+#include "bmp/bmp.h"
 #include "tests.h"
 #include "main.h"
 
 //How many allocation algorithms we have.
 #define ALG_COUNT 4
 //How many times to measure each algorithm.
-#define MEASURE_COUNT 10000000
-//Due to function being really fast we have to measure it multiple times and get
-//mean.
-#define MEASURE_COUNT_INNER 1
+#define MEASURE_COUNT 1
 //Path to tests
 #define TEST_PATH "./tests"
 
@@ -82,10 +80,11 @@ int requests_read(FILE * sizes_file) {
 
         if (requests_total == requests_size) {
             requests_size *= 2;
-            requests = (int *) realloc(requests, requests_size);
+            requests = (int *) realloc(requests, requests_size * sizeof(int));
         }
 
         requests[requests_total] = size;
+        requests_total++;
     }
 
     return 1;
@@ -130,8 +129,50 @@ struct timespec time_diff(struct timespec start, struct timespec end) {
     return temp;
 }
 
+//Don't change much, or make sure everything is integer.
+#define IMAGE_WIDTH 1028
+#define BLOCKS_SIZE 25
+#define BLOCK_MARGIN 2
+#define BLOCKS_PER_ROW (IMAGE_WIDTH - BLOCK_MARGIN) / (BLOCKS_SIZE + BLOCK_MARGIN)
+void save_memory_image(char * name)
+{
+    MemoryBlock * mb_cur;
+    BMPFile * bmp;
+    unsigned int i, total_memory = 0, lines = 0, x, y, used;
+
+    for(mb_cur = mb_head; mb_cur != NULL; mb_cur = mb_cur->next) {
+        total_memory += mb_cur->total_memory;
+    }
+
+    lines = (int) (((total_memory * (BLOCKS_SIZE + BLOCK_MARGIN) + BLOCK_MARGIN) / (float) IMAGE_WIDTH)) + 1;
+
+    bmp = bmp_create(IMAGE_WIDTH, (BLOCKS_SIZE * lines) + (lines * BLOCK_MARGIN) + BLOCK_MARGIN);
+
+    bmp_fill(bmp, BMP_RGB(214, 231, 63));
+
+    y = BLOCK_MARGIN + BLOCKS_SIZE;
+    x = BLOCK_MARGIN;
+
+    for(mb_cur = mb_head; mb_cur != NULL; mb_cur = mb_cur->next) {
+        used = mb_cur->total_memory - mb_cur->free_memory;
+
+        for(i = 0; i < mb_cur->total_memory; i++) {
+            if (x + BLOCKS_SIZE > IMAGE_WIDTH) {
+                x = BLOCK_MARGIN;
+                y += BLOCK_MARGIN + BLOCKS_SIZE;
+            }
+            bmp_draw_rectangle(bmp, x, y, x + BLOCKS_SIZE, y - BLOCKS_SIZE,
+                    (i < used) ? BMP_RGB(181, 26, 0) : BMP_RGB(118, 186, 67));
+
+            x += BLOCK_MARGIN + BLOCKS_SIZE;
+        }
+    }
+    bmp_save(bmp, name);
+    bmp_free(bmp);
+}
+
 //Do the measurements for each algorithm.
-void measure(FILE* chunks_file, FILE * requests_file)
+void measure(FILE* chunks_file, FILE * requests_file, char * name)
 {
     //Benchmark times.
     struct timespec start_time_proc, end_time_proc, sum_proc;
@@ -140,7 +181,9 @@ void measure(FILE* chunks_file, FILE * requests_file)
     //Temp MemoryBlock.
     MemoryBlock * mb_temp;
 
-    int i, j, k, r;
+    char img_name[255];
+
+    int i, j, r;
     //Simulate free memory according to chunks file.
     r = memory_allocate(chunks_file);
 
@@ -171,8 +214,7 @@ void measure(FILE* chunks_file, FILE * requests_file)
             clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time_proc);
 
             //Call the algorithm.
-            for(k = 0; k < MEASURE_COUNT_INNER; k++)
-                r = alg_functions[i](mb_head, requests, requests_total);
+            r = alg_functions[i](mb_head, requests, requests_total);
 
             //Get end time and calculate difference.
             clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time_proc);
@@ -191,6 +233,10 @@ void measure(FILE* chunks_file, FILE * requests_file)
 
         //Get memory fragmentation.
         frag = get_fragmentation();
+
+        sprintf(img_name, "%s_%d.bmp", name, i);
+        //Save image of memory.
+        save_memory_image(img_name);
 
         //Check response from algorithm.
         if(r < 0)
@@ -247,7 +293,7 @@ void run_tests(TestNode * test)
         }
 
         printf("Doing measurements for test '%s' ...\n", test->name);
-        measure(chunks_file, requests_file);
+        measure(chunks_file, requests_file, test->name);
 
         //Close the files.
         fclose(chunks_file);
@@ -325,7 +371,7 @@ int main(int argc, char * argv[]) {
     //Just working with 2 input files.
     if(!do_tests) {
         //Do the measurements for input files.
-        measure(chunks_file, requests_file);
+        measure(chunks_file, requests_file, "from_input");
 
         //Close the files.
         fclose(chunks_file);

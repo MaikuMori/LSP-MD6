@@ -87,7 +87,7 @@ bool bmp_save(BMPFile * bmp, char * filename)
 
 void bmp_set_pixel(BMPFile * bmp, uint32_t x, uint32_t y, uint32_t color)
 {
-    assert(bmp && x < bmp->height && y < bmp->width);
+    assert(bmp && y < bmp->height && x < bmp->width);
 
     bmp->data_p[((bmp->height - 1 - y) * bmp->width) + x] = color;
 }
@@ -107,11 +107,22 @@ void bmp_draw_rectangle(BMPFile * bmp, uint32_t x1, uint32_t y1,
                         uint32_t x2, uint32_t y2, uint32_t color)
 {
     int32_t x, y;
+    uint32_t tmp;
 
-    assert(bmp && x1 <= x2 && y1 <=y2 && x2 < bmp->width && y2 < bmp->height);
+    if (x1 > x2) {
+        tmp = x1;
+        x1 = x2;
+        x2 = tmp;
+    }
 
-    for(y = y1; y <= y2; y++) {
-        for(x = x1; x <= x2; x++) {
+    if (y1 > y2) {
+        tmp = y1;
+        y1 = y2;
+        y2 = tmp;
+    }
+
+    for(y = y1; y < y2; y++) {
+        for(x = x1; x < x2; x++) {
             bmp_set_pixel(bmp, x, y, color);
         }
     }
@@ -122,9 +133,6 @@ void bmp_draw_line(BMPFile * bmp, uint32_t x1, uint32_t y1,
 {
     uint32_t dx, dy;
     int32_t sx, sy, err, err2;
-
-    assert(x1 < bmp->width && x2 < bmp->width &&
-           y1 < bmp->height && y2 < bmp->height);
 
     if (x1 < x2) {
         sx = 1;
@@ -173,8 +181,6 @@ void bmp_draw_circle(BMPFile * bmp, uint32_t x, uint32_t y,
     int32_t ddF_y = -2 * radius;
     int32_t cx = 0;
     int32_t cy = radius;
-
-    assert((x < bmp->width) && (y < bmp->height));
 
     bmp_set_pixel(bmp, x, y + radius, color);
     bmp_set_pixel(bmp, x, y - radius, color);

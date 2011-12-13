@@ -70,6 +70,8 @@ static int scan_callback(const char *fpath, const struct stat *sb, int tflag,
         //Create a new test node.
         test = (TestNode *) malloc(sizeof(TestNode));
         test->name = name;
+        test->chunk_path = NULL;
+        test->request_path = NULL;
         test->next = NULL;
 
         if(test_tail) {
@@ -120,6 +122,9 @@ void tests_free(TestNode * test_head)
     //Free tests.
     while(test_head) {
         test_temp = test_head->next;
+        free(test_head->name);
+        free(test_head->chunk_path);
+        free(test_head->request_path);
         free(test_head);
         test_head = test_temp;
     }
