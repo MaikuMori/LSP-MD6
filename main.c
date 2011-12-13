@@ -14,7 +14,7 @@
 //How many allocation algorithms we have.
 #define ALG_COUNT 4
 //How many times to measure each algorithm.
-#define MEASURE_COUNT 1
+#define MEASURE_COUNT 100000
 //Path to tests
 #define TEST_PATH "./tests"
 
