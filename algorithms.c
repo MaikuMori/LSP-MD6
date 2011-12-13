@@ -31,10 +31,11 @@ int alg_next_fit(MemoryBlock * memorylist_head, int * requests, int total) {
     MemoryBlock * mb_cur;
     MemoryBlock * mb_last_found = memorylist_head;
 
-    int i, size, unallocated = 0;
+    int i, size, unallocated = 0, loops;
 
     for(i = 0; i < total; i++) {
         size = requests[i];
+        loops = 0;
 
         for(mb_cur = mb_last_found; ; mb_cur = mb_cur->next) {
 
@@ -43,8 +44,11 @@ int alg_next_fit(MemoryBlock * memorylist_head, int * requests, int total) {
             }
             //Failed to find memory.
             if (mb_cur == mb_last_found){
-                 unallocated += size;
-                 break;
+                loops++;
+                if(loops == 2) {
+                    unallocated += size;
+                    break;
+                }
             }
 
             if(mb_cur->free_memory >= size) {
